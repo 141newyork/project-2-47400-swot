@@ -3,7 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-
+import random
+from scipy.stats import norm
 def convert_to_json(data):
     json_data = {}
 
@@ -135,49 +136,78 @@ def generate_graph(category_data, swap_axes):
     return plt
 
 def perform_monte_carlo_analysis(data):
-    # Create a dictionary to store the simulation results
-    monte_carlo_results = {}
+    # Create lists to store positive and negative effects
+    positive_effects = []
+    negative_effects = []
 
     # Iterate over each category in the data
     for category, factors in data.items():
-        monte_carlo_results[category] = []
+        # Check if the category is either Strength or Opportunity
+        if category == 'Strength' or category == 'Opportunity':
+            for factor in factors:
+                est_value = factor['est_value']
+                min_prob = factor['min_prob']
+                max_prob = factor['max_prob']
 
-        # Iterate over each factor within the category
-        for factor in factors:
-            est_value = factor['est_value']
-            min_prob = factor['min_prob']
-            max_prob = factor['max_prob']
+                # Generate random samples based on the probability distribution
+                samples = [random.triangular(min_prob, (min_prob + max_prob) / 2, max_prob) for _ in range(5000, 20001)]
 
-            # Generate random samples based on the probability distribution
-            samples = np.random.triangular(min_prob, (min_prob + max_prob) / 2, max_prob, size=1000)
+                # Calculate the simulated values by multiplying the samples with the estimated value
+                simulated_values = [sample * est_value for sample in samples]
 
-            # Calculate the simulated values by multiplying the samples with the estimated value
-            simulated_values = samples * est_value
+                # Add the simulated values to the positive effects list
+                positive_effects.extend(simulated_values)
+        # Check if the category is either Weakness or Threat
+        elif category == 'Weakness' or category == 'Threat':
+            for factor in factors:
+                est_value = factor['est_value']
+                min_prob = factor['min_prob']
+                max_prob = factor['max_prob']
 
-            # Store the simulated values in the result dictionary
-            monte_carlo_results[category].append({
-                'factor': factor['param_name'],
-                'simulated_values': simulated_values
-            })
+                # Generate random samples based on the probability distribution
+                samples = [random.triangular(min_prob, (min_prob + max_prob) / 2, max_prob) for _ in range(5000, 20001)]
 
-    return monte_carlo_results
+                # Calculate the simulated values by multiplying the samples with the estimated value
+                simulated_values = [sample * est_value for sample in samples]
+
+                # Add the simulated values to the negative effects list
+                negative_effects.extend(simulated_values)
+
+    return positive_effects, negative_effects
 
 
-def display_monte_carlo_plots(monte_carlo_results):
-    # Display the Monte Carlo plots for each category
-    for category, results in monte_carlo_results.items():
-        st.subheader(f"Monte Carlo Analysis - {category}")
+def display_monte_carlo_plots(positive_effects, negative_effects):
+    # Plot the Gaussian curves for positive and negative effects
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-        for result in results:
-            factor = result['factor']
-            simulated_values = result['simulated_values']
+    # Calculate the mean and standard deviation of the positive effects
+    positive_mean = np.mean(positive_effects)
+    positive_std = np.std(positive_effects)
 
-            fig, ax = plt.subplots()
-            sns.histplot(simulated_values, kde=True, ax=ax)
-            ax.set_xlabel('Simulated Values')
-            ax.set_ylabel('Frequency')
-            ax.set_title(f"Monte Carlo Analysis - {category}: {factor}")
-            st.pyplot(fig)
+    # Generate the x-axis values for the positive Gaussian curve
+    x_positive = np.linspace(positive_mean - 3 * positive_std, positive_mean + 3 * positive_std, 100)
+    y_positive = norm.pdf(x_positive, positive_mean, positive_std)
+
+    # Calculate the mean and standard deviation of the negative effects
+    negative_mean = np.mean(negative_effects)
+    negative_std = np.std(negative_effects)
+
+    # Generate the x-axis values for the negative Gaussian curve
+    x_negative = np.linspace(negative_mean - 3 * negative_std, negative_mean + 3 * negative_std, 100)
+    y_negative = norm.pdf(x_negative, negative_mean, negative_std)
+
+    # Plot the positive and negative Gaussian curves
+    ax.plot(x_positive, y_positive, label='Positive Effects')
+    ax.plot(x_negative, y_negative, label='Negative Effects')
+
+    # Set the plot title and labels
+    ax.set_title('Monte Carlo Analysis - Positive and Negative Effects')
+    ax.set_xlabel('Effect Value')
+    ax.set_ylabel('Probability Density')
+    ax.legend()
+
+    # Display the plot
+    st.pyplot(fig)
 
 def main():
     st.title('CSC 47400 Project 2 - SWOT')
@@ -236,14 +266,17 @@ def main():
                         )
                         st.pyplot(plt)
 
-        # Perform Monte Carlo analysis
-        monte_carlo_results = perform_monte_carlo_analysis(data_with_extra_data)
-
-        # Display Monte Carlo plots
-        display_monte_carlo_plots(monte_carlo_results)
-
         # Add Data
         add_data(df)
+
+
+        # Perform Monte Carlo analysis
+        positive_effects, negative_effects = perform_monte_carlo_analysis(data_with_extra_data)
+
+        # Display Monte Carlo plots
+        display_monte_carlo_plots(positive_effects, negative_effects)
+
+       
 
 if __name__ == '__main__':
     main()
