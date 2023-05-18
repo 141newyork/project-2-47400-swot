@@ -267,7 +267,7 @@ def main():
                         st.pyplot(plt)
 
         # Add Data
-        add_data(df)
+        #add_data(df)
 
 
         # Perform Monte Carlo analysis
