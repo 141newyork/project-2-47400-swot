@@ -1,10 +1,8 @@
 import streamlit as st
 import pandas as pd
-import matplotlib
-matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import numpy as np
-
+import seaborn as sns
 
 def convert_to_json(data):
     json_data = {}
@@ -62,7 +60,39 @@ def calculate_extra_data(data):
 
     return data
 
-def generate_graph(category_data, swap_axes,data_sets):
+def add_data(df):
+    st.header("Add Data")
+    category = st.selectbox("Select Category", ["Strength", "Weakness", "Opportunity", "Threat"])
+    factor_type = st.text_input("Factor Type")
+    sl_number = st.number_input("Sl #", value=1, step=1)
+    param_name = st.text_input("Param Name")
+    est_value = st.number_input("Est. Value in Currency")
+    min_prob = st.number_input("Min Prob %")
+    realistic_prob = st.number_input("Realistic Prob %")
+    max_prob = st.number_input("Max Prob %")
+
+    if st.button("Add"):
+        new_factor = {
+            "CATEGORY": category,
+            "FACTOR TYPE": factor_type,
+            "Sl #": sl_number,
+            "PARAM NAME": param_name,
+            "EST. VALUE IN CURRENCY": est_value,
+            "MIN PROB  %": min_prob,
+            "REALISTIC PROB  %": realistic_prob,
+            "MAX PROB %": max_prob
+        }
+
+        # Append new data to DataFrame
+        new_row = pd.DataFrame([new_factor])
+        df = pd.concat([df, new_row], ignore_index=True)
+
+        # Save DataFrame to the uploaded file
+        df.to_excel('uploaded_file.xlsx', index=False)
+
+        st.success("Data added successfully!")
+
+def generate_graph(category_data, swap_axes):
     plt.figure(figsize=(14, 10))
 
     data_sets = [
@@ -87,25 +117,67 @@ def generate_graph(category_data, swap_axes,data_sets):
 
     num_factors = len(category_data)
     num_data_sets = len(data_sets)
-  
 
     for i in range(num_factors):
         color_map = plt.cm.get_cmap('tab10')  # Use tab10 color map
         color = color_map(i / num_factors)  # Assign a color based on factor index
-        
+
         plt.bar(index + i * bar_width, values[i], bar_width, label=f'{param_names[i]}', color=color)
         plt.xticks(index + (num_factors - 1) * bar_width / 2, data_sets, rotation=45)
-
-
 
     plt.xlabel('Data Sets')
     plt.ylabel('Value')
     plt.title('Bar Graph')
-    plt.xticks(index + (num_factors - 1) * bar_width / 2, data_sets, rotation=45)
+    plt.xticks(index + bar_width * (len(category_data) - 1) / 2, data_sets, rotation=45)
     plt.legend()
     plt.tight_layout()
 
     return plt
+
+def perform_monte_carlo_analysis(data):
+    # Create a dictionary to store the simulation results
+    monte_carlo_results = {}
+
+    # Iterate over each category in the data
+    for category, factors in data.items():
+        monte_carlo_results[category] = []
+
+        # Iterate over each factor within the category
+        for factor in factors:
+            est_value = factor['est_value']
+            min_prob = factor['min_prob']
+            max_prob = factor['max_prob']
+
+            # Generate random samples based on the probability distribution
+            samples = np.random.triangular(min_prob, (min_prob + max_prob) / 2, max_prob, size=1000)
+
+            # Calculate the simulated values by multiplying the samples with the estimated value
+            simulated_values = samples * est_value
+
+            # Store the simulated values in the result dictionary
+            monte_carlo_results[category].append({
+                'factor': factor['param_name'],
+                'simulated_values': simulated_values
+            })
+
+    return monte_carlo_results
+
+
+def display_monte_carlo_plots(monte_carlo_results):
+    # Display the Monte Carlo plots for each category
+    for category, results in monte_carlo_results.items():
+        st.subheader(f"Monte Carlo Analysis - {category}")
+
+        for result in results:
+            factor = result['factor']
+            simulated_values = result['simulated_values']
+
+            fig, ax = plt.subplots()
+            sns.histplot(simulated_values, kde=True, ax=ax)
+            ax.set_xlabel('Simulated Values')
+            ax.set_ylabel('Frequency')
+            ax.set_title(f"Monte Carlo Analysis - {category}: {factor}")
+            st.pyplot(fig)
 
 def main():
     st.title('CSC 47400 Project 2 - SWOT')
@@ -121,50 +193,57 @@ def main():
             st.error(f'Error reading Excel file: {str(e)}')
             return
 
-       # st.write('Excel data:')
-        #st.dataframe(df)
-
         # Convert DataFrame to JSON
         json_data = convert_to_json(df)
 
         # Calculate extra data
         data_with_extra_data = calculate_extra_data(json_data)
 
-       # st.write('Data with extra calculations:')
-       # st.json(data_with_extra_data)
-
         # Select category
         desired_categories = ['Strength', 'Weakness', 'Opportunity', 'Threat']
+        category_colors = {'Strength': 'green', 'Weakness': 'yellow', 'Opportunity': 'blue', 'Threat': 'red'}
 
-        # Generate graphs for each category
-        for category in desired_categories:
-            category_data = data_with_extra_data.get(category, [])
-            if len(category_data) > 0:
-                data_sets = [
-            'New Name 1',
-            'New Name 2',
-            'New Name 3',
-            'New Name 4',
-            'New Name 5',
-            'New Name 6',
-            'New Name 7'
-        ]
-                plt = generate_graph(category_data, swap_axes=False,data_sets=data_sets)
-        
-                if category == "Strength":
-                    text_color = "green"
-                elif category == "Weakness":
-                    text_color = "yellow"
-                elif category == "Opportunity":
-                    text_color = "blue"
-                elif category == "Threat":
-                    text_color = "red"
-                else:
-                    text_color = "black"   
-                st.markdown(
-    '<p align="center" style="color: {}; font-size: 24px;">{} Graph</p>'.format(text_color, category),
-    unsafe_allow_html=True
-)
-                st.pyplot(plt)
+        # Create two rows of buttons for each category
+        col1, col2 = st.columns(2)
+
+        with col1:
+            for category in desired_categories[:2]:
+                button_color = category_colors.get(category, "black")
+                button_clicked = st.button(category, key=f"{category}_button", help=f"{category} Graph")
+                if button_clicked:
+                    category_data = data_with_extra_data.get(category, [])
+                    if len(category_data) > 0:
+                        plt = generate_graph(category_data, swap_axes=False)
+                        st.markdown(
+                            '<p align="center" style="color: {}; font-size: 24px;">{} Graph</p>'.format(
+                                button_color, category),
+                            unsafe_allow_html=True
+                        )
+                        st.pyplot(plt)
+
+        with col2:
+            for category in desired_categories[2:]:
+                button_color = category_colors.get(category, "red")
+                button_clicked = st.button(category, key=f"{category}_button", help=f"{category} Graph")
+                if button_clicked:
+                    category_data = data_with_extra_data.get(category, [])
+                    if len(category_data) > 0:
+                        plt = generate_graph(category_data, swap_axes=False)
+                        st.markdown(
+                            '<p align="center" style="color: {}; font-size: 24px;">{} Graph</p>'.format(
+                                button_color, category),
+                            unsafe_allow_html=True
+                        )
+                        st.pyplot(plt)
+
+        # Perform Monte Carlo analysis
+        monte_carlo_results = perform_monte_carlo_analysis(data_with_extra_data)
+
+        # Display Monte Carlo plots
+        display_monte_carlo_plots(monte_carlo_results)
+
+        # Add Data
+        add_data(df)
+
 if __name__ == '__main__':
     main()
